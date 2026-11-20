@@ -48,7 +48,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          df -h .
+          {
+            echo "Preparation started at $(date -u +%FT%TZ)"
+            echo "Runner $RUNNER_OS $RUNNER_ARCH"
+            echo "Logical processors $(nproc)"
+            awk '/^MemTotal:/ { print "Total memory", $2, $3 }' /proc/meminfo
+            df -h .
+          } | tee "$RUNNER_TEMP/resources.txt"
           mkdir -p "$RUNNER_TEMP/launcher"
           base=https://github.com/leanprover/elan/releases/download/v4.4.0
           curl -fsSL --retry 3 "$base/elan-x86_64-unknown-linux-gnu.tar.gz" | tar -xz -C "$RUNNER_TEMP/launcher"
@@ -61,9 +67,14 @@ jobs:
         run: |
           set -euo pipefail
           start=$(date +%s)
-          python3 tracker/tasks.py build "$PACKET" "$RUNNER_TEMP/replay/lean" "$RUNNER_TEMP/receipt" --bundle
+          echo "Packet build started at $(date -u +%FT%TZ)" >> "$RUNNER_TEMP/resources.txt"
+          status=0
+          python3 tracker/tasks.py build "$PACKET" "$RUNNER_TEMP/replay/lean" "$RUNNER_TEMP/receipt" --bundle || status=$?
+          echo "Packet build ended at $(date -u +%FT%TZ) with status $status" >> "$RUNNER_TEMP/resources.txt"
+          df -h . >> "$RUNNER_TEMP/resources.txt"
+          cp "$RUNNER_TEMP/resources.txt" "$RUNNER_TEMP/receipt/resources.txt"
           echo "$(( $(date +%s) - start ))" > "$RUNNER_TEMP/receipt/elapsed-seconds.txt"
-          df -h .
+          exit "$status"
       - name: Preserve verification evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
