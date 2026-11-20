@@ -30,13 +30,15 @@ jobs:
       REVISION: ${{ inputs.revision }}
     steps:
       - name: Confirm volunteer grant
+        env:
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
           [[ "$PACKET" =~ ^P[0-9]{4}$ && "$CLAIM" =~ ^[0-9]+$ && "$REVISION" =~ ^[0-9a-f]{40}$ ]]
-          api="https://api.github.com/repos/rohanarun/alpoge-rh-replay/issues/$CLAIM"
-          curl -fsSL "$api" | jq -e --arg title "Claim $PACKET" '.state == "open" and .title == $title and .user.login == "JanSimeonMetzger" and any(.labels[]; .name == "claim-granted")'
-          curl -fsSL "$api/comments" | jq -e --arg prefix "Granted \`$PACKET\`." 'any(.[]; .user.login == "github-actions[bot]" and (.body | startswith($prefix)))'
+          api="repos/rohanarun/alpoge-rh-replay/issues/$CLAIM"
+          gh api "$api" | jq -e --arg title "Claim $PACKET" '.state == "open" and .title == $title and .user.login == "JanSimeonMetzger" and any(.labels[]; .name == "claim-granted")'
+          gh api --paginate --slurp "$api/comments?per_page=100" | jq 'add' | jq -e --arg prefix "Granted \`$PACKET\`." 'any(.[]; .user.login == "github-actions[bot]" and (.body | startswith($prefix)))'
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: rohanarun/alpoge-rh-replay
