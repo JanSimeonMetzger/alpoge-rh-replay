@@ -85,3 +85,49 @@ jobs:
             ${{ runner.temp }}/replay/replay.log
           retention-days: 2
           if-no-files-found: warn
+  publish:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      PACKET: ${{ inputs.packet }}
+      CLAIM: ${{ inputs.claim }}
+      REVISION: ${{ inputs.revision }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          sparse-checkout: volunteer
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: rohanarun/alpoge-rh-replay
+          ref: ${{ inputs.revision }}
+          path: source
+          sparse-checkout: tracker
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: evidence-${{ inputs.packet }}
+          path: evidence
+      - name: Verify each reserved target against the receipt
+        run: python3 -I volunteer/verify_packet.py source "$PACKET" evidence/receipt
+      - name: Publish reviewed evidence to this fork
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$PACKET" =~ ^P[0-9]{4}$ && "$CLAIM" =~ ^[0-9]+$ ]]
+          tag="replay-$PACKET-$GITHUB_RUN_ID"
+          cd evidence/receipt
+          if ! gh release view "$tag" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            printf 'Independent Lean replay by Jan Metzger for [%s](https://github.com/rohanarun/alpoge-rh-replay/issues/%s).\n' "$PACKET" "$CLAIM" > "$RUNNER_TEMP/release-notes.md"
+            gh release create "$tag" -R "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --latest=false --title "$PACKET — independent Lean replay" --notes-file "$RUNNER_TEMP/release-notes.md" receipt.json build.log targets.tar.gz resources.txt elapsed-seconds.txt
+          fi
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$tag" > "$RUNNER_TEMP/release.json"
+          for file in receipt.json build.log targets.tar.gz resources.txt elapsed-seconds.txt; do
+            sum=$(sha256sum "$file" | cut -d' ' -f1)
+            jq -e --arg file "$file" --arg sum "sha256:$sum" 'any(.assets[]; .name == $file and .state == "uploaded" and .digest == $sum)' "$RUNNER_TEMP/release.json" >/dev/null
+          done
