@@ -69,11 +69,14 @@ jobs:
           start=$(date +%s)
           echo "Packet build started at $(date -u +%FT%TZ)" >> "$RUNNER_TEMP/resources.txt"
           status=0
-          python3 tracker/tasks.py build "$PACKET" "$RUNNER_TEMP/replay/lean" "$RUNNER_TEMP/receipt" --bundle || status=$?
+          python3 tracker/tasks.py build "$PACKET" "$RUNNER_TEMP/replay/lean" "$RUNNER_TEMP/receipt" --bundle > "$RUNNER_TEMP/packet-driver.log" 2>&1 || status=$?
+          cat "$RUNNER_TEMP/packet-driver.log"
           echo "Packet build ended at $(date -u +%FT%TZ) with status $status" >> "$RUNNER_TEMP/resources.txt"
           df -h . >> "$RUNNER_TEMP/resources.txt"
-          cp "$RUNNER_TEMP/resources.txt" "$RUNNER_TEMP/receipt/resources.txt"
-          echo "$(( $(date +%s) - start ))" > "$RUNNER_TEMP/receipt/elapsed-seconds.txt"
+          if [[ -d "$RUNNER_TEMP/receipt" ]]; then
+            cp "$RUNNER_TEMP/resources.txt" "$RUNNER_TEMP/receipt/resources.txt"
+            echo "$(( $(date +%s) - start ))" > "$RUNNER_TEMP/receipt/elapsed-seconds.txt"
+          fi
           exit "$status"
       - name: Preserve verification evidence
         if: always()
@@ -83,6 +86,8 @@ jobs:
           path: |
             ${{ runner.temp }}/receipt/
             ${{ runner.temp }}/replay/replay.log
+            ${{ runner.temp }}/packet-driver.log
+            ${{ runner.temp }}/resources.txt
           retention-days: 2
           if-no-files-found: warn
   publish:
