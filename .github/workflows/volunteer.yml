@@ -1,0 +1,74 @@
+name: Volunteer packet replay
+run-name: Replay ${{ inputs.packet }} for claim ${{ inputs.claim }}
+on:
+  workflow_dispatch:
+    inputs:
+      packet:
+        description: Granted packet ID
+        required: true
+        type: string
+      claim:
+        description: Upstream issue number
+        required: true
+        type: string
+      revision:
+        description: Reviewed upstream tracker commit
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: volunteer-packet
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    env:
+      PACKET: ${{ inputs.packet }}
+      CLAIM: ${{ inputs.claim }}
+      REVISION: ${{ inputs.revision }}
+    steps:
+      - name: Confirm volunteer grant
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$PACKET" =~ ^P[0-9]{4}$ && "$CLAIM" =~ ^[0-9]+$ && "$REVISION" =~ ^[0-9a-f]{40}$ ]]
+          api="https://api.github.com/repos/rohanarun/alpoge-rh-replay/issues/$CLAIM"
+          curl -fsSL "$api" | jq -e --arg title "Claim $PACKET" '.state == "open" and .title == $title and .user.login == "JanSimeonMetzger" and any(.labels[]; .name == "claim-granted")'
+          curl -fsSL "$api/comments" | jq -e --arg prefix "Granted \`$PACKET\`." 'any(.[]; .user.login == "github-actions[bot]" and (.body | startswith($prefix)))'
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: rohanarun/alpoge-rh-replay
+          ref: ${{ inputs.revision }}
+          persist-credentials: false
+      - name: Install elan and prepare original sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          df -h .
+          mkdir -p "$RUNNER_TEMP/launcher"
+          base=https://github.com/leanprover/elan/releases/download/v4.4.0
+          curl -fsSL --retry 3 "$base/elan-x86_64-unknown-linux-gnu.tar.gz" | tar -xz -C "$RUNNER_TEMP/launcher"
+          ELAN_HOME="$RUNNER_TEMP/launcher/home" "$RUNNER_TEMP/launcher/elan-init" -y --no-modify-path --default-toolchain none
+          export PATH="$RUNNER_TEMP/launcher/home/bin:$PATH"
+          echo "$RUNNER_TEMP/launcher/home/bin" >> "$GITHUB_PATH"
+          bash ./verify.sh "$RUNNER_TEMP/replay" --prepare-only
+      - name: Build all modules and record evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          start=$(date +%s)
+          python3 tracker/tasks.py build "$PACKET" "$RUNNER_TEMP/replay/lean" "$RUNNER_TEMP/receipt" --bundle
+          echo "$(( $(date +%s) - start ))" > "$RUNNER_TEMP/receipt/elapsed-seconds.txt"
+          df -h .
+      - name: Preserve verification evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: evidence-${{ inputs.packet }}
+          path: |
+            ${{ runner.temp }}/receipt/
+            ${{ runner.temp }}/replay/replay.log
+          retention-days: 2
+          if-no-files-found: warn
