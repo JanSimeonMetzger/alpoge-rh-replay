@@ -125,7 +125,7 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$PACKET" =~ ^P[0-9]{4}$ && "$CLAIM" =~ ^[0-9]+$ ]]
-          tag="replay-$PACKET-$GITHUB_RUN_ID"
+          tag="replay-$PACKET-issue-$CLAIM"
           cd evidence/receipt
           if ! gh release view "$tag" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             printf 'Independent Lean replay by Jan Metzger for [%s](https://github.com/rohanarun/alpoge-rh-replay/issues/%s).\n' "$PACKET" "$CLAIM" > "$RUNNER_TEMP/release-notes.md"
