@@ -78,6 +78,10 @@ jobs:
             echo "$(( $(date +%s) - start ))" > "$RUNNER_TEMP/receipt/elapsed-seconds.txt"
           fi
           exit "$status"
+      - name: Check the receipt against the prepared checkout
+        run: |
+          python3 tracker/replay_evidence.py verify "$PACKET" "$RUNNER_TEMP/receipt" \
+            --checkout "$RUNNER_TEMP/replay/lean"
       - name: Preserve verification evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
