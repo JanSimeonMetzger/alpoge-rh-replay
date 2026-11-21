@@ -28,7 +28,7 @@ def check(condition, message):
         raise SystemExit(message)
 
 with gzip.open(opt.tracker / "tracker/modules.jsonl.gz", "rt") as src:
-    rows = [r for line in src if (r := json.loads(line))["packet"] == opt.packet]
+    rows = [r for r in map(json.loads, src) if opt.packet in (r["packet"], r["id"])]
 check(rows, "Unknown packet")
 receipt = json.loads((opt.evidence / "receipt.json").read_text())
 summary = json.loads((opt.tracker / "tracker/summary.json").read_text())
